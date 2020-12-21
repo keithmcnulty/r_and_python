@@ -1,0 +1,163 @@
+---
+title: "Programming with R and Python together and moving seamlessly between them in R Markdown"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this document I demonstrate how R Markdown is a nice setting for coding your project in both R and Python, allowing you to code some elements of your project in each language and manipulate objects created in one language using another language.
+
+This could be valuable to you for a number of reasons:
+
+1.  It will allow you to code in your native language but bring in features that might exist only in the other language.
+2.  It will allow you to directly collaborate with a colleague who programs in the other language.
+3.  It will give you the opportunity to work in both languages and become fluent in them.
+
+### 1. What you will need
+
+To make this work, you will need the following:
+
+1.  R and Python installed
+2.  The RStudio IDE (you can do this on other IDEs but it's easier in RStudio)
+3.  Your favourite environment manager for Python (in this case I use `conda`)
+4.  The `rmarkdown` and `reticulate` packages installed in R
+
+We will work in the RStudio IDE writing R Markdown documents, but move between code chunks that are written in R and in Python.  To demonstrate we will show a couple of simple examples.
+
+### 2. Setting up the Python environment
+
+If you are familiar with coding in Python, then you will know that any work we do in Python will need to reference a specific environment that contains all the packages needed for the work.  There are many ways to manage packages in Python, and `virtualenv` and `conda` are the two most popular.  In this case I am assuming that we use `conda` and that you have `conda` installed as your environment manager.  
+
+You can use the `reticulate` package in R to set up your conda environments through the R command line if you want to (using functions like `conda_create()`), but as a regular Python programmer I prefer to set up my environments manually.  
+
+Let's assume we are creating a conda environment called `r_and_python` and we are installing `pandas` and `statsmodels` into that environment.  So we do this in the terminal:
+
+```
+conda create --name r_and_python
+conda activate r_and_python
+conda install pandas
+conda install statsmodels
+```
+
+Once `pandas` and `statsmodels` (and any other packages you might need) are installed, you are done with your environment setup.  Now run `conda info` in the terminal and grab the path to your environment location.  You'll need that for the next step.
+
+
+### 3. Setting up your R project to work with both R and Python
+
+We will launch an R project in RStudio but we will want to be able to run Python in that project.  To make sure that Python code runs in the environment you want it to, you need to set the system environment variable `RETICULATE_PYTHON` to the Python executable in that environment.  This will be the path that you grabbed in the previous section followed by `/bin/python3`.
+
+The best way to ensure that this variable is permanently set in your project is to create a file in the project called `.Rprofile` and add the following line to it:
+
+```
+Sys.setenv(RETICULATE_PYTHON="path_to_environment/bin/python3")
+```
+
+replacing `path_to_environment` with the path you grabbed in the previous section.  Save your `.Rprofile` file and then restart your R session.  Whenever you restart your session or project, `.Rprofile` will run and set your Python environment for you.  If you want to check, you can run `Sys.getenv("RETICULATE_PYTHON")`.
+
+
+### 4. Writing your code - Example 1
+
+Now you can set up an R Markdown document and code in the two different languages.  First you need to load the `reticulate` library in your first code chunk.
+
+```{r}
+library(reticulate)
+```
+
+Now when you want to write code in Python, you can wrap it in the usual backticks but label it as a python code chunk using `{python}`, and when you want to write in R you use `{r}`.
+
+In our first example, let's assume that you have run a model on a data set of student test scores. 
+
+Here I am running Python inside this chunk to run my model:
+
+```{python}
+import pandas as pd
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+
+# obtain ugtests data
+url = "http://peopleanalytics-regression-book.org/data/ugtests.csv"
+ugtests = pd.read_csv(url)
+
+# define model
+model = smf.ols(formula = "Final ~ Yr3 + Yr2 + Yr1", data = ugtests)
+
+# fit model
+fitted_model = model.fit()
+
+# see results summary
+model_summary = fitted_model.summary()
+
+print(model_summary)
+
+```
+
+
+That's great, but now you have had to drop the work due to something more urgent and hand it off to your colleague who is an R programmer.  You had hoped you could do some model diagnostics.
+
+Never fear.  They can access all python objects you have created inside an overall list called `py`.  So if they create an R chunk, they can access the parameters of you model:  
+
+```{r}
+py$fitted_model$params
+```
+
+or the first few residuals:
+
+```{r}
+py$fitted_model$resid[1:5]
+```
+
+Now they can easily do some model diagnostics, like running a quantile-quantile plot on the residuals of your model:
+
+```{r}
+qqnorm(py$fitted_model$resid)
+
+```
+
+
+### 5. Writing your code - Example 2
+
+You have been analyzing some data on speed dating in Python and you have created a pandas dataframe with all the data in it.  For simplicity we will download the data and take a look at it:
+
+```{python}
+import pandas as pd
+
+url = "http://peopleanalytics-regression-book.org/data/speed_dating.csv"
+speed_dating = pd.read_csv(url)
+print(speed_dating.head())
+```
+
+Now you've been running a simple logistic regression model in Python to try to relate the decision `dec` to a few of the other variables.  However, you realize that this data is actually hierarchical and that the same individual `iid` can have multiple dates.
+
+So you realize you need to run a mixed effects logistic regression model, but you can't find any program in Python that will do that!
+
+Never fear, send it over to your colleague and they can do it in R:
+
+```{r}
+library(lme4)
+
+speed_dating <- py$speed_dating
+
+iid_intercept_model <- lme4:::glmer(dec ~ agediff + samerace + attr + intel + prob + (1 | iid),
+                                    data = speed_dating,
+                                    family = "binomial")
+
+coefficients <- coef(iid_intercept_model)$iid
+
+```
+
+
+Now you can get it back from them and have a look at the coefficients.  You can access R objects in Python within the overall list object `r`.
+
+```{python}
+coefs = r.coefficients
+
+print(coefs.head())
+
+```
+
+
+
+
+
